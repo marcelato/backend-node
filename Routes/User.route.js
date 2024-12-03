@@ -1,5 +1,5 @@
 const router =require('express').Router()
-const { LoginUser, CreateUsuario } = require('../controller/admin/user');
+const { LoginUser, CreateUsuario } = require('../controller/admin/User');
 const { ValidarCampos } = require('../middleweres/middleweres');
 const { check } = require('express-validator');
 
