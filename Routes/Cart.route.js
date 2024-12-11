@@ -1,5 +1,5 @@
 const router =require('express').Router()
-const { InsertCartProduct } = require('../controller/admin/Cart');
+const { InsertCartProduct, getOrderCart, getOrderCartDetail } = require('../controller/admin/Cart');
 const { ValidarCampos } = require('../middleweres/middleweres');
 const { check } = require('express-validator');
 
@@ -11,5 +11,9 @@ router.post("/CartProduct",[
     check("Email","es obligatorio").not().isEmpty(),
     ValidarCampos
 ],InsertCartProduct);
+
+router.get("/OrderCart",getOrderCart);
+
+router.get("/OrderCartDeatil/:id",getOrderCartDetail);
 
 module.exports={router}
