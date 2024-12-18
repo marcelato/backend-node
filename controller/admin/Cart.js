@@ -2,6 +2,7 @@ const {response, query} = require('express')
 const { pool } = require('../../database/connection')
 const cloudinary = require('cloudinary').v2;
 const crypto = require('crypto');
+const { Resend } =require("resend")
 
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -106,12 +107,14 @@ const InsertCartProduct =async(req, res = response) =>{
             "currency": "COP",
             "customer_email": Email,
             "signature":  hashHex,
+            "redirect_url": "https://www.google.com" ,
             "reference":ProductoToken,
             "acceptance_token": acceptance_token,
                 "payment_method": {
                     "type": "CARD",
                     "installments": 1, // Número de cuotas
-                    "token":ProductoToken
+                    "token":ProductoToken,
+                    "payment_description":"tu pedido esta"
                 }
         }
         const responseTranstion = await fetch(` https://api.wompi.co/v1/transactions`, {
@@ -123,16 +126,16 @@ const InsertCartProduct =async(req, res = response) =>{
 
     if (responseTranstion.status === 422) {
         const messege= await responseTranstion.json();
-      
+        console.log(messege.error)
         return res.status(401).json({
              ok: false,
              msg:messege.error.messages });
     }
 
     const Trasntion= await responseTranstion.json();
-
+   
     await delay(10000);
-       
+
     const getTranstion = await fetch(` https://api.wompi.co/v1/transactions/${Trasntion.data.id}`, {
         method: "GET",
         headers: { 'Content-type': 'application/json',
@@ -211,8 +214,85 @@ const InsertCartProduct =async(req, res = response) =>{
                 const queryResultOrderById = await pool.query(
                     "SELECT MAX(ID) as max FROM orders"
                 );
-        
+
                 const orderbyid = queryResultOrderById[0].max;
+
+                const resend = new Resend('re_Pkq5acSn_4gHATWbUCXBvxz5nfijJBypJ');
+
+
+                const htmlContent = `
+                <!DOCTYPE html>
+                <html lang="es">
+                <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Tu pedido fue entregado</title>
+                  <style>
+                    body {
+                      font-family: Arial, sans-serif;
+                      background-color: #f9f9f9;
+                      margin: 0;
+                      padding: 0;
+                    }
+                    .container {
+                      max-width: 600px;
+                      margin: 20px auto;
+                      background: #ffffff;
+                      padding: 20px;
+                      border: 1px solid #e0e0e0;
+                      border-radius: 8px;
+                    }
+                    .title {
+                      font-size: 24px;
+                      font-weight: bold;
+                      text-align: center;
+                      margin-bottom: 20px;
+                    }
+                    .content {
+                      font-size: 16px;
+                      line-height: 1.5;
+                      color: #333333;
+                    }
+                    .content strong {
+                      font-weight: bold;
+                    }
+                    .footer {
+                      margin-top: 20px;
+                      font-size: 14px;
+                      text-align: center;
+                      color: #666666;
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <div class="title">¡Fue hecha una compra por la pagina web!</div>
+                    <div class="content">
+                      <p><strong>Número de pedido</strong><br>#8B9CCE67-${orderbyid}</p>
+                    </div>
+                    <div class="footer">
+                      <p>Wolc cerraduras digitales</p>
+                    </div>
+                  </div>
+                </body>
+                </html>
+                `;
+        
+                (async function () {
+                    const { data, error } = await resend.emails.send({
+                        from: 'Acme <onboarding@resend.dev>',
+                        to: ['cerradurasdigitaleswolc@gmail.com'],
+                        subject: 'hello world',
+                        html: htmlContent,
+                    });
+                  
+                    if (error) {
+                      return console.log('Error al enviar el correo:', error);
+                    }
+                  
+                    console.log('Correo enviado:', data);
+                })();
+                
                 // Enviar la respuesta cuando todas las consultas terminen
                 return res.status(success ? 200 : 500).json({
                     ok: success,
@@ -220,7 +300,7 @@ const InsertCartProduct =async(req, res = response) =>{
                         Email,
                         cartItems,
                         date:getValidTransation.data.created_at,
-                        invonice:`#8B9CCE67-${orderbyid}`,
+                        invonice:`8B9CCE67-${orderbyid}`,
                         total_amount
                     }
                 });
@@ -234,8 +314,6 @@ const InsertCartProduct =async(req, res = response) =>{
        
         const result = queryResult[0].max;
         const customerbyId = result
-
-
         
         await pool.query('INSERT INTO Customer set ?', data, async(err, customer) => {
             if(err){
@@ -325,9 +403,12 @@ const getOrderCartDetail=  async(req, res = response) =>{
     const {id} = req.params
 
     try {
-        const [customer] =await pool.query("SELECT orders.ID,  orders.id_prod_card,Customer.address, Customer.Phone,Customer.Email,Customer.city,Customer.state,Customer.postalCode, order_date,total_amount ,Customer.Username,Customer.Lastname FROM orders  INNER JOIN Customer on Customer.ID =  orders.customer_id WHERE orders.ID = ?;",[id])
 
-        const order =await pool.query('SELECT img_product.img, Products.Code,Products.Name,Products.Brand,Products.Supplier_reference,Products.Description,  order_items.quantity,order_items.unit_price  FROM order_items  INNER JOIN Products on Products.ID = order_items.product_id INNER JOIN orders on orders.ID = order_items.order_id INNER JOIN img_product on img_product.id_product = Products.ID  WHERE orders.ID =? and img_product.isMain="true"',[id])
+        const index = id.lastIndexOf("-"); // Encuentra la posición del último guion
+        const result = id.substring(index + 1); 
+        const [customer] =await pool.query("SELECT  orders.status,  orders.ID,  orders.id_prod_card,Customer.address, Customer.Phone,Customer.Email,Customer.city,Customer.state,Customer.postalCode, order_date,total_amount ,Customer.Username,Customer.Lastname FROM orders  INNER JOIN Customer on Customer.ID =  orders.customer_id WHERE orders.ID = ?;",[result])
+
+        const order =await pool.query('SELECT img_product.img, Products.Code,Products.Name,Products.Brand,Products.Supplier_reference,Products.Description,  order_items.quantity,order_items.unit_price  FROM order_items  INNER JOIN Products on Products.ID = order_items.product_id INNER JOIN orders on orders.ID = order_items.order_id INNER JOIN img_product on img_product.id_product = Products.ID  WHERE orders.ID =? and img_product.isMain="true"',[result])
 
         const getTranstion = await fetch(` https://api.wompi.co/v1/transactions/${customer.id_prod_card}`, {
             method: "GET",
@@ -356,8 +437,45 @@ const getOrderCartDetail=  async(req, res = response) =>{
     }
 }
 
+const PostOrderCartDetailUpdate=  async(req, res = response) =>{
+
+    const  {status,productId} = req.body
+    
+    try {
+
+        let data = {
+            status: status
+        };
+
+        console.log(status)
+
+        pool.query(
+            "UPDATE orders SET ? WHERE ID = ?", 
+            [data, productId], 
+            (updateError) => {
+                if (updateError) {
+                    return res.status(401).json({
+                        ok: false,
+                        msg: "Error al actualizar los datos"
+                    });
+                }
+                return res.status(200).json({
+                    ok: true,
+                    msg: "Datos actualizados correctamente"
+                });
+            }
+        );
+
+    } catch (error) {
+        return res.status(401).json({
+            ok:false
+        })
+    }
+}
+
 module.exports ={
     InsertCartProduct,
     getOrderCart,
-    getOrderCartDetail
+    getOrderCartDetail,
+    PostOrderCartDetailUpdate
 }

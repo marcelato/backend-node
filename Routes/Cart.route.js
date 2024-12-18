@@ -1,5 +1,5 @@
 const router =require('express').Router()
-const { InsertCartProduct, getOrderCart, getOrderCartDetail } = require('../controller/admin/Cart');
+const { InsertCartProduct, getOrderCart, getOrderCartDetail, PostOrderCartDetailUpdate } = require('../controller/admin/Cart');
 const { ValidarCampos } = require('../middleweres/middleweres');
 const { check } = require('express-validator');
 
@@ -15,5 +15,7 @@ router.post("/CartProduct",[
 router.get("/OrderCart",getOrderCart);
 
 router.get("/OrderCartDeatil/:id",getOrderCartDetail);
+
+router.post("/OrderCartDeatilupdate",PostOrderCartDetailUpdate);
 
 module.exports={router}
