@@ -144,7 +144,7 @@ const InsertCartProduct =async(req, res = response) =>{
 
     const getValidTransation= await getTranstion.json();
 
-    if(getValidTransation.data.status =="DECLINED"){
+    if(getValidTransation.data.status =="APPROVED"){
 
         await pool.query('INSERT INTO Customer set ?', data, async(err, customer) => {
             if(err){
@@ -306,14 +306,7 @@ const InsertCartProduct =async(req, res = response) =>{
                 });
             }
         }
-    }else if(getValidTransation =="APPROVED"){
-
-        const queryResult = await pool.query(
-            "SELECT MAX(ID) as max FROM Customer"
-          );
-       
-        const result = queryResult[0].max;
-        const customerbyId = result
+    }else if(getValidTransation =="PENDING"){
         
         await pool.query('INSERT INTO Customer set ?', data, async(err, customer) => {
             if(err){
@@ -322,7 +315,13 @@ const InsertCartProduct =async(req, res = response) =>{
                      msg:"error al insertar datos"
                 })
              }else{
-              
+                const queryResult = await pool.query(
+                    "SELECT MAX(ID) as max FROM Customer"
+                  );
+               
+                const result = queryResult[0].max;
+                const customerbyId = result
+                
                 let order ={
                     customer_id:customerbyId,
                     total_amount,
@@ -336,16 +335,26 @@ const InsertCartProduct =async(req, res = response) =>{
                              msg:"error al insertar datos"
                         })
                      }else{
+                        
                         const queryResultOrderById = await pool.query(
-                            "SELECT MAX(ID) as max FROM orders");
-                             const orderbyid = queryResultOrderById[0].max;
-                            cartItems.forEach(itemCart => {
+                            "SELECT MAX(ID) as max FROM orders"
+                          );
+                       
+                        const orderbyided = queryResultOrderById[0].max;
+                
+                            cartItems.forEach( async(itemCart) => {
                                 let orderItems ={
-                                    order_id:orderbyid,
+                                    order_id:orderbyided,
                                     product_id:itemCart.ID,
                                     quantity:itemCart.quantity,
                                     unit_price:itemCart.Price
                                 }
+
+                                await pool.query(
+                                    'UPDATE Products SET Quantity = Quantity - ? WHERE ID = ?',
+                                    [itemCart.quantity, itemCart.ID]
+                                );
+                                
                                 pool.query("INSERT INTO order_items SET ?", orderItems, (insertError) => {
                                     if (insertError) {
                                         return res.status(401).json({
@@ -354,18 +363,109 @@ const InsertCartProduct =async(req, res = response) =>{
                                         }) 
                                     }
                                     checkCompletion()
-                            });
-                        })
+                                });
+                            })
                      }
                 })
              }
         })
 
-
-        function checkCompletion() {
+       async function checkCompletion () {
             completedQueries++;
             if (completedQueries === totalQueries) {
-                return res.status(success ? 200 : 500).json({ ok: success });
+                const queryResultOrderById = await pool.query(
+                    "SELECT MAX(ID) as max FROM orders"
+                );
+
+                const orderbyid = queryResultOrderById[0].max;
+
+                const resend = new Resend('re_Pkq5acSn_4gHATWbUCXBvxz5nfijJBypJ');
+
+
+                const htmlContent = `
+                <!DOCTYPE html>
+                <html lang="es">
+                <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Tu pedido fue entregado</title>
+                  <style>
+                    body {
+                      font-family: Arial, sans-serif;
+                      background-color: #f9f9f9;
+                      margin: 0;
+                      padding: 0;
+                    }
+                    .container {
+                      max-width: 600px;
+                      margin: 20px auto;
+                      background: #ffffff;
+                      padding: 20px;
+                      border: 1px solid #e0e0e0;
+                      border-radius: 8px;
+                    }
+                    .title {
+                      font-size: 24px;
+                      font-weight: bold;
+                      text-align: center;
+                      margin-bottom: 20px;
+                    }
+                    .content {
+                      font-size: 16px;
+                      line-height: 1.5;
+                      color: #333333;
+                    }
+                    .content strong {
+                      font-weight: bold;
+                    }
+                    .footer {
+                      margin-top: 20px;
+                      font-size: 14px;
+                      text-align: center;
+                      color: #666666;
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <div class="title">¡Fue hecha una compra por la pagina web!</div>
+                    <div class="content">
+                      <p><strong>Número de pedido</strong><br>#8B9CCE67-${orderbyid}</p>
+                    </div>
+                    <div class="footer">
+                      <p>Wolc cerraduras digitales</p>
+                    </div>
+                  </div>
+                </body>
+                </html>
+                `;
+        
+                (async function () {
+                    const { data, error } = await resend.emails.send({
+                        from: 'Acme <onboarding@resend.dev>',
+                        to: ['cerradurasdigitaleswolc@gmail.com'],
+                        subject: 'hello world',
+                        html: htmlContent,
+                    });
+                  
+                    if (error) {
+                      return console.log('Error al enviar el correo:', error);
+                    }
+                  
+                    console.log('Correo enviado:', data);
+                })();
+                
+                // Enviar la respuesta cuando todas las consultas terminen
+                return res.status(success ? 200 : 500).json({
+                    ok: success,
+                    data: {
+                        Email,
+                        cartItems,
+                        date:getValidTransation.data.created_at,
+                        invonice:`8B9CCE67-${orderbyid}`,
+                        total_amount
+                    }
+                });
             }
         }
     }
